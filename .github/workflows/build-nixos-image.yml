@@ -1,0 +1,47 @@
+name: Build and Release NixOS Image
+
+on:
+  push:
+    branches:
+      - main # 或者您希望触发构建的分支
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 需要权限来创建和管理 release
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v25
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable # 或者您使用的 nixpkgs 版本
+
+      - name: Build NixOS ISO
+        run: nix build .#nixosConfigurations.cn-minimal.config.system.build.isoImage --print-out-paths > iso_path.txt
+
+      - name: Get ISO path and name
+        id: iso_info
+        run: |
+          ISO_PATH=$(cat iso_path.txt)
+          ISO_NAME="cn-minimal.iso"
+          echo "iso_path=$ISO_PATH" >> $GITHUB_OUTPUT
+          echo "iso_name=$ISO_NAME" >> $GITHUB_OUTPUT
+          echo "Built ISO: $ISO_NAME at $ISO_PATH"
+
+      - name: Create new release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest NixOS Image Build
+          body: |
+            NixOS image built from commit ${{ github.sha }}
+            ISO Name: ${{ steps.iso_info.outputs.iso_name }}
+          files: ${{ steps.iso_info.outputs.iso_path }}
+          prerelease: false
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
